@@ -2,16 +2,11 @@
 // Licensed under MIT. See LICENSE for details.
 
 using System;
-using System.Linq;
 using Sekai.Framework.Extensions;
 using Sekai.Framework.Graphics;
 using Sekai.Framework.Logging;
-using Sekai.Framework.Systems;
 using Sekai.Framework.Threading;
-using Silk.NET.Input;
 using Silk.NET.Windowing;
-using Silk.NET.Windowing.Extensions.Veldrid;
-using Veldrid;
 
 namespace Sekai.Framework.Platform;
 
@@ -22,47 +17,45 @@ public class ViewHost : Host
 {
     public event Action<bool>? OnFocusChanged;
     protected IView View;
-    private IInputContext? input;
-    private IGraphicsContext? graphics;
 
     internal ViewHost(HostOptions? options = null)
         : base(options)
     {
         var opts = ViewOptions.Default;
-        opts.API = Options.Renderer.ToGraphicsAPI();
+        opts.API = Options.Renderer.ToSilk();
         opts.VSync = false;
         opts.ShouldSwapAutomatically = false;
+
         View = CreateView(opts);
+        View.Closing += Exit;
+        View.FocusChanged += e => OnFocusChanged?.Invoke(e);
     }
 
     /// <summary>
     /// Creates the underlying view for this host.
     /// </summary>
     protected virtual IView CreateView(ViewOptions opts) => Window.GetView(opts);
+
     protected override FrameworkThreadManager CreateThreadManager() => new ViewThreadManager(View);
 
     protected override void Initialize(Game game)
     {
+        var graphics = (GraphicsContext)game.Services.Resolve<IGraphicsContext>(true);
+        View.Resize += size => RenderThread?.Post(() => graphics.Device.ResizeMainWindow((uint)size.X, (uint)size.Y));
+
         Logger.OnMessageLogged += new LogListenerConsole();
 
         View.Initialize();
-
-        game.Services.Cache(input = View.CreateInput());
-        game.Services.Cache(graphics = View.CreateGraphics(Options.Renderer));
-
-        var threads = game.Services.Resolve<FrameworkThreadManager>(true);
-        threads.Add(new GameRenderThread(game, graphics));
 
         View.Resize += size => graphics.Device.ResizeMainWindow((uint)size.X, (uint)size.Y);
         View.Closing += Dispose;
         View.FocusChanged += e => OnFocusChanged?.Invoke(e);
     }
 
-    protected sealed override void Destroy()
+    protected sealed override IGraphicsContext CreateGraphicsContext(Graphics.GraphicsAPI api)
     {
-        base.Destroy();
-        input?.Dispose();
-        graphics?.Dispose();
+        View.Initialize();
+        return new GraphicsContext(View, api);
     }
 
     private class ViewThreadManager : FrameworkThreadManager
@@ -88,34 +81,15 @@ public class ViewHost : Host
     {
         public IView? View { get; set; }
 
-        protected override void OnNewFrame() => View?.DoEvents();
+        protected override void OnNewFrame()
+        {
+            View?.DoEvents();
+        }
 
         protected override void Destroy()
         {
             base.Destroy();
-            View?.DoEvents();
             View?.Reset();
-        }
-    }
-
-    private class GameRenderThread : RenderThread
-    {
-        private readonly Game game;
-        private readonly GameSystemRegistry systems;
-
-        public GameRenderThread(Game game, IGraphicsContext graphics)
-            : base(graphics)
-        {
-            this.game = game;
-            systems = game.Services.Resolve<GameSystemRegistry>(true);
-        }
-
-        protected override void OnRenderFrame(CommandList commands)
-        {
-            foreach (var system in systems.OfType<IRenderable>())
-                system.Render(commands);
-
-            game.Render(commands);
         }
     }
 }

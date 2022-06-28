@@ -3,8 +3,8 @@
 
 using System;
 using System.Reflection;
+using Sekai.Framework.Graphics;
 using Sekai.Framework.Threading;
-using Veldrid;
 
 namespace Sekai.Framework.Platform;
 
@@ -16,7 +16,7 @@ public class HostOptions
     /// <summary>
     /// The title of the game window.
     /// </summary>
-    public string Title { get; set; } = Assembly.GetCallingAssembly().GetName().Name ?? "Sekai Framework";
+    public string Title { get; set; } = Assembly.GetEntryAssembly()?.GetName().Name ?? "Sekai Framework";
 
     /// <summary>
     /// Arguments obtained from launching the process.
@@ -35,5 +35,5 @@ public class HostOptions
     /// <summary>
     /// The backend graphics to be used by the renderer.
     /// </summary>
-    public GraphicsBackend Renderer { get; set; } = GraphicsBackend.Vulkan;
+    public GraphicsAPI Renderer { get; set; } = GraphicsAPI.Vulkan;
 }
